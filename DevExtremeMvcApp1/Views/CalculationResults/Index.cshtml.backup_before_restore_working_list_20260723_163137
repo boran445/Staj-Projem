@@ -1,0 +1,528 @@
+@model IEnumerable<DevExtremeMvcApp1.Models.CalculationGridRow>
+@using System.Linq
+@using System.Collections.Generic
+
+@{
+    ViewBag.Title = "Hesaplama Listesi";
+    var records = Model == null ? new List<DevExtremeMvcApp1.Models.CalculationGridRow>() : Model.ToList();
+}
+
+<div class="page-head">
+    <div>
+        <span class="eyebrow">&#350;ekil Hesaplama</span>
+        <h1 class="page-title">Hesaplama Listesi</h1>
+        <p class="page-subtitle">Kay&#305;tlar DevExtreme DataGrid ile listelenir; arama, filtreleme, kolon se&#231;imi, Excel aktar&#305;m&#305; ve sayfalama grid &#252;zerinden yap&#305;l&#305;r.</p>
+    </div>
+
+    <div class="page-actions">
+        <button type="button" class="btn app-btn app-btn-success" id="calculateAllButton">T&#252;m&#252;n&#252; Hesapla</button>
+        <button type="button" class="btn app-btn app-btn-danger" id="deleteSelectedButton" disabled>Se&#231;ilenleri Sil</button>
+        <button type="button" class="btn app-btn app-btn-light" id="demoDataButton">Demo Veri</button>
+        <a href="@Url.Action("Create", "CalculationResults")" class="btn app-btn app-btn-primary">Yeni Kay&#305;t</a>
+    </div>
+</div>
+
+<div class="grid-action-token">
+    @Html.AntiForgeryToken()
+</div>
+
+<div id="gridAlertHost">
+    @if (TempData["SuccessMessage"] != null)
+    {
+        <div class="alert alert-success">@TempData["SuccessMessage"]</div>
+    }
+
+    @if (TempData["ErrorMessage"] != null)
+    {
+        <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
+    }
+</div>
+
+<section class="portal-panel grid-panel">
+    <div class="table-toolbar">
+        <div>
+            <strong>DevExtreme DataGrid</strong>
+            <span><span id="recordCountText">@records.Count</span> kay&#305;t listeleniyor</span>
+        </div>
+    </div>
+
+    <div class="dx-grid-host">
+        <div id="calculationGrid"></div>
+    </div>
+</section>
+
+<script>
+    var initialGridRows = @Html.Raw(Json.Encode(records)) || [];
+    var loadedGridRows = [];
+    var gridRowsUrl = '@Url.Action("GridRowsJson", "CalculationResults")';
+    var detailUrlTemplate = '@Url.Action("Details", "CalculationResults", new { id = "__id__" })';
+    var editUrlTemplate = '@Url.Action("Edit", "CalculationResults", new { id = "__id__" })';
+    var calculateAllUrl = '@Url.Action("CalculateAllJson", "CalculationResults")';
+    var calculateOneUrlTemplate = '@Url.Action("CalculateOneJson", "CalculationResults", new { id = "__id__" })';
+    var createDemoDataUrl = '@Url.Action("CreateDemoDataJson", "CalculationResults")';
+    var deleteUrlTemplate = '@Url.Action("Delete", "CalculationResults", new { id = "__id__" })';
+    var deleteBaseUrl = '@Url.Action("Delete", "CalculationResults")';
+    var deleteSelectedUrl = '@Url.Action("DeleteSelected", "CalculationResults")';
+    var selectedGridIds = {};
+
+    function sanitizeRows(rows) {
+        if (!Array.isArray(rows)) {
+            return [];
+        }
+
+        return rows.map(function (row) {
+            return normalizeGridRow(row || {});
+        });
+    }
+
+    function normalizeGridRow(row) {
+        var normalized = $.extend({}, row);
+        normalized.Shape = shapeText(normalized.ShapeType || normalized.Shape);
+        normalized.StatusKey = statusKeyFor(normalized);
+        normalized.Status = statusText(normalized);
+
+        return normalized;
+    }
+
+    function normalizeTurkishKey(value) {
+        return (value || "")
+            .toString()
+            .trim()
+            .toLocaleLowerCase("tr-TR")
+            .replace(/\u0131/g, "i")
+            .replace(/\u00fc/g, "u")
+            .replace(/\u00f6/g, "o")
+            .replace(/\u011f/g, "g")
+            .replace(/\u015f/g, "s")
+            .replace(/\u00e7/g, "c")
+            .replace(/[^a-z0-9]/g, "");
+    }
+
+    function shapeText(value) {
+        switch (normalizeTurkishKey(value)) {
+            case "kare":
+                return "Kare";
+            case "kup":
+                return "K\u00fcp";
+            case "daire":
+                return "Daire";
+            case "dikdortgen":
+                return "Dikd\u00f6rtgen";
+            case "ucgen":
+                return "\u00dc\u00e7gen";
+            case "silindir":
+                return "Silindir";
+            case "kure":
+                return "K\u00fcre";
+            case "koni":
+                return "Koni";
+            default:
+                return value || "-";
+        }
+    }
+
+    function statusKeyFor(row) {
+        var key = normalizeTurkishKey(row && row.StatusKey);
+        if (key === "done" || key === "hesaplandi") {
+            return "done";
+        }
+
+        if (key === "pending" || key === "bekliyor") {
+            return "pending";
+        }
+
+        return row && (row.Area !== null && row.Area !== undefined || row.Volume !== null && row.Volume !== undefined)
+            ? "done"
+            : "pending";
+    }
+
+    function statusText(row) {
+        return statusKeyFor(row) === "done" ? "Hesapland\u0131" : "Bekliyor";
+    }
+
+    function gridUrl(template, id) {
+        return template.replace("__id__", encodeURIComponent(id));
+    }
+
+    function getAntiForgeryToken() {
+        return $('input[name="__RequestVerificationToken"]').first().val();
+    }
+
+    function getGrid() {
+        try {
+            return $("#calculationGrid").dxDataGrid("instance");
+        } catch (error) {
+            return null;
+        }
+    }
+
+    function getSelectedIds() {
+        return Object.keys(selectedGridIds)
+            .map(function (id) {
+                return Number(id);
+            })
+            .filter(function (id) {
+                return !Number.isNaN(id) && id > 0;
+            });
+    }
+
+    function getSelectableRows() {
+        return (loadedGridRows || []).filter(function (row) {
+            return row && row.Id;
+        });
+    }
+
+    function areAllRowsSelected() {
+        var rows = getSelectableRows();
+        if (!rows.length) {
+            return false;
+        }
+
+        return rows.every(function (row) {
+            return !!selectedGridIds[row.Id];
+        });
+    }
+
+    function updateSelectionUi() {
+        var selectedIds = getSelectedIds();
+        var selectedCount = selectedIds.length;
+
+        $("#deleteSelectedButton")
+            .prop("disabled", selectedCount === 0)
+            .text(selectedCount > 0 ? "Se\u00e7ilenleri Sil (" + selectedCount + ")" : "Se\u00e7ilenleri Sil");
+
+        $(".grid-row-selector").each(function () {
+            var id = Number($(this).data("id"));
+            $(this).prop("checked", !!selectedGridIds[id]);
+        });
+
+        $(".grid-select-all").each(function () {
+            var allSelected = areAllRowsSelected();
+            this.checked = allSelected;
+            this.indeterminate = selectedCount > 0 && !allSelected;
+        });
+    }
+
+    function setRowSelection(id, isSelected) {
+        id = Number(id);
+        if (!id || Number.isNaN(id)) {
+            return;
+        }
+
+        if (isSelected) {
+            selectedGridIds[id] = true;
+        } else {
+            delete selectedGridIds[id];
+        }
+
+        updateSelectionUi();
+    }
+
+    function setAllRowsSelection(isSelected) {
+        selectedGridIds = {};
+        if (isSelected) {
+            getSelectableRows().forEach(function (row) {
+                selectedGridIds[row.Id] = true;
+            });
+        }
+
+        updateSelectionUi();
+    }
+
+    function clearGridSelectionState() {
+        selectedGridIds = {};
+        updateSelectionUi();
+    }
+
+    function formatNumber(value) {
+        if (value === null || value === undefined || value === "") {
+            return "-";
+        }
+
+        var numberValue = Number(value);
+        if (Number.isNaN(numberValue)) {
+            return value;
+        }
+
+        return numberValue.toLocaleString("tr-TR", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        });
+    }
+
+    function nullableText(cellInfo) {
+        return cellInfo.value === null || cellInfo.value === undefined ? "-" : cellInfo.value;
+    }
+
+    function numberText(cellInfo) {
+        return formatNumber(cellInfo.value);
+    }
+
+    function nullableNumberText(cellInfo) {
+        return cellInfo.value === null || cellInfo.value === undefined ? "-" : formatNumber(cellInfo.value);
+    }
+
+    function normalizeError(xhr, fallbackMessage) {
+        if (xhr && xhr.responseJSON && xhr.responseJSON.message) {
+            return xhr.responseJSON.message;
+        }
+
+        if (xhr && xhr.responseJSON && xhr.responseJSON.Message) {
+            return xhr.responseJSON.Message;
+        }
+
+        if (xhr && xhr.responseText) {
+            return xhr.responseText;
+        }
+
+        return fallbackMessage;
+    }
+
+    function showGridMessage(message, isSuccess) {
+        var alertClass = isSuccess ? "alert-success" : "alert-danger";
+
+        $("#gridAlertHost")
+            .empty()
+            .append($("<div/>").addClass("alert " + alertClass).text(message));
+    }
+
+    function appendActionLink(container, text, url, cssClass) {
+        $("<a/>")
+            .addClass("action-link " + (cssClass || ""))
+            .attr("href", url)
+            .text(text)
+            .appendTo(container);
+    }
+
+    function appendGridActionButton(container, text, cssClass, clickHandler) {
+        $("<button/>")
+            .attr("type", "button")
+            .addClass("action-link " + (cssClass || ""))
+            .text(text)
+            .on("click", clickHandler)
+            .appendTo(container);
+    }
+
+    function shapeCellTemplate(container, options) {
+        $("<span/>")
+            .addClass("table-shape")
+            .text(shapeText((options.data || {}).ShapeType || options.value))
+            .appendTo(container);
+    }
+
+    function statusCellTemplate(container, options) {
+        var row = options.data || {};
+        var key = statusKeyFor(row);
+
+        $("<span/>")
+            .addClass(key === "done" ? "status-badge status-badge-done" : "status-badge status-badge-wait")
+            .text(statusText(row))
+            .appendTo(container);
+    }
+
+    function selectionHeaderTemplate(container) {
+        $("<input/>")
+            .attr("type", "checkbox")
+            .addClass("grid-select-all")
+            .attr("title", "T\u00fcm\u00fcn\u00fc se\u00e7")
+            .on("change", function () {
+                setAllRowsSelection(this.checked);
+            })
+            .appendTo(container);
+
+        updateSelectionUi();
+    }
+
+    function selectionCellTemplate(container, options) {
+        var id = (options.data || {}).Id;
+
+        $("<input/>")
+            .attr("type", "checkbox")
+            .addClass("grid-row-selector")
+            .attr("title", "Kayd\u0131 se\u00e7")
+            .data("id", id)
+            .prop("checked", !!selectedGridIds[id])
+            .prop("disabled", !id)
+            .on("change", function () {
+                setRowSelection(id, this.checked);
+            })
+            .appendTo(container);
+    }
+
+    function actionsCellTemplate(container, options) {
+        appendActionButtons(container, options.data || {});
+    }
+
+    function appendDeleteScreenLink(container, id) {
+        appendActionLink(container, "Sil", gridUrl(deleteUrlTemplate, id), "action-link-danger row-action-delete");
+    }
+
+    function appendCalculateLink(container, id) {
+        $("<a/>")
+            .addClass("action-link action-link-success row-action-calculate")
+            .attr("href", "#")
+            .text("Hesapla")
+            .on("click", function (event) {
+                event.preventDefault();
+                postGridAction(gridUrl(calculateOneUrlTemplate, id), "Kay\u0131t hesapland\u0131.");
+            })
+            .appendTo(container);
+    }
+
+    function appendActionButtons(container, row) {
+        var id = row.Id;
+
+        if (!id) {
+            return;
+        }
+
+        var actionWrap = $("<div/>").addClass("dx-grid-actions");
+
+        appendActionLink(actionWrap, "Detay", gridUrl(detailUrlTemplate, id), "row-action-detail");
+        appendActionLink(actionWrap, "D\u00fczenle", gridUrl(editUrlTemplate, id), "row-action-edit");
+        appendCalculateLink(actionWrap, id);
+        appendDeleteScreenLink(actionWrap, id);
+
+        actionWrap.appendTo(container);
+    }
+    function setGridRows(rows) {
+        rows = sanitizeRows(rows);
+        loadedGridRows = rows;
+        $("#recordCountText").text(rows.length);
+
+        var grid = getGrid();
+        if (!grid) {
+            return;
+        }
+
+        grid.beginUpdate();
+        grid.clearFilter();
+        grid.clearSelection();
+        grid.option("dataSource", rows.slice());
+        grid.pageIndex(0);
+        grid.endUpdate();
+        grid.refresh();
+        grid.repaint();
+
+        window.setTimeout(function () {
+            forceRowsInsideGrid(rows);
+        }, 120);
+    }
+
+    function forceRowsInsideGrid(rows) {
+        rows = sanitizeRows(rows);
+        $("#manualGridRowsHost").remove();
+        $("#calculationGrid .manual-dx-row").remove();
+
+        if (!rows.length) {
+            return;
+        }
+
+        if ($("#calculationGrid .dx-data-row").not(".manual-dx-row").length > 0) {
+            return;
+        }
+
+        var body = $("#calculationGrid .dx-datagrid-rowsview .dx-datagrid-table tbody").first();
+        if (!body.length) {
+            forceRowsInsideFallbackTable(rows);
+            return;
+        }
+
+        body.find("tr").remove();
+        $("#calculationGrid .dx-datagrid-nodata").hide();
+
+        var columns = getManualGridColumns();
+        rows.forEach(function (row) {
+            var line = $("<tr/>")
+                .addClass("dx-row dx-data-row manual-dx-row")
+                .attr("role", "row")
+                .appendTo(body);
+
+            columns.forEach(function (column, index) {
+                appendManualGridCell(line, row, column, index);
+            });
+        });
+    }
+
+    function getManualGridColumns() {
+        var fallbackColumns = [
+            {
+                    dataField: "__select",
+                    caption: "",
+                    width: 58,
+                    alignment: "center",
+                    fixed: true,
+                    fixedPosition: "left",
+                    allowExporting: false,
+                    allowFiltering: false,
+                    allowSorting: false,
+                    allowGrouping: false,
+                    headerCellTemplate: selectionHeaderTemplate,
+                    cellTemplate: selectionCellTemplate
+                },
+                { dataField: "Shape", caption: "\u015eekil", width: 120, cellTemplate: shapeCellTemplate },
+                { dataField: "Id", caption: "Id", dataType: "number", width: 80, alignment: "center" },
+                { dataField: "AppUserId", caption: "Kullan\u0131c\u0131 Id", dataType: "number", width: 120, alignment: "center", customizeText: nullableText },
+                { dataField: "CreatedByUserName", caption: "Kullan\u0131c\u0131", width: 130 },
+                { dataField: "Param1", caption: "\u00d6l\u00e7\u00fc 1", dataType: "number", width: 120, alignment: "right", customizeText: numberText },
+                { dataField: "Param2", caption: "\u00d6l\u00e7\u00fc 2", dataType: "number", width: 120, alignment: "right", customizeText: nullableNumberText },
+                { dataField: "Area", caption: "Alan", dataType: "number", width: 120, alignment: "right", allowGrouping: false, customizeText: nullableNumberText },
+                { dataField: "Volume", caption: "Hacim", dataType: "number", width: 120, alignment: "right", allowGrouping: false, customizeText: nullableNumberText },
+                { dataField: "CreatedDateText", caption: "Kay\u0131t Tarihi", dataType: "string", width: 160 },
+                { dataField: "CalculationDateText", caption: "\u0130\u015flem Tarihi", dataType: "string", sortOrder: "desc", width: 160 },
+                { dataField: "Status", caption: "Durum", width: 120, cellTemplate: statusCellTemplate },
+                {
+                    caption: "\u0130\u015flemler",
+                    width: 380,
+                    minWidth: 380,
+                    alignment: "left",
+                    fixed: true,
+                    fixedPosition: "right",
+                    cssClass: "grid-actions-column",
+                    allowExporting: false,
+                    allowFiltering: false,
+                    allowSorting: false,
+                    allowGrouping: false,
+                    cellTemplate: actionsCellTemplate
+                }
+            ],
+            onToolbarPreparing: onGridToolbarPreparing,
+            onExporting: onGridExporting,
+            onContentReady: function () {
+                $("#recordCountText").text((loadedGridRows || []).length);
+            }
+        });
+
+        setGridRows(initialGridRows);
+        reloadGrid();
+    }
+
+    $(function () {
+        initialGridRows = sanitizeRows(initialGridRows);
+        loadedGridRows = initialGridRows;
+        createCalculationGrid();
+
+
+        $("#calculateAllButton").on("click", function () {
+            postGridAction(calculateAllUrl, "Kay\u0131tlar hesapland\u0131.");
+        });
+
+        $("#deleteSelectedButton").on("click", deleteSelectedRows);
+
+        $("#demoDataButton").on("click", function () {
+            postGridAction(createDemoDataUrl, "Demo kay\u0131tlar eklendi.");
+        });
+    });
+</script>
+
+
+
+
+
+
+
+
+
+
+
+

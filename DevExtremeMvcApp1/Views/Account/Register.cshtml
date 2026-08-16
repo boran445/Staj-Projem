@@ -1,0 +1,72 @@
+﻿@model DevExtremeMvcApp1.Models.RegisterViewModel
+
+@{
+    ViewBag.Title = "Kayıt Ol";
+    ViewBag.HideNavbar = true;
+}
+
+<div class="auth-frame">
+    <section class="auth-info">
+        <div class="auth-brand">
+            <span class="brand-mark">SP</span>
+            <span>Staj Projesi</span>
+        </div>
+
+        <div class="auth-copy">
+            <span class="eyebrow">Yeni Hesap</span>
+            <h1>Portal kullanımı hesaba bağlı.</h1>
+            <p>Her kullanıcı kendi şekil kayıtlarını oluşturur, düzenler ve hesaplama sonucunu ayrı takip eder.</p>
+        </div>
+
+        <div class="auth-metrics">
+            <div class="auth-metric">
+                <strong>Kare</strong>
+                <span>Alan</span>
+            </div>
+            <div class="auth-metric">
+                <strong>Küp</strong>
+                <span>Hacim</span>
+            </div>
+            <div class="auth-metric">
+                <strong>API</strong>
+                <span>Sonuç</span>
+            </div>
+        </div>
+    </section>
+
+    <section class="auth-card">
+        <h2>Kayıt ol</h2>
+        <p class="auth-subtitle">Yeni kullanıcı hesabı oluşturun.</p>
+
+        @using (Html.BeginForm("Register", "Account", FormMethod.Post))
+        {
+            @Html.AntiForgeryToken()
+            @Html.ValidationSummary(true, "", new { @class = "alert alert-danger" })
+
+            <div class="mb-3">
+                @Html.LabelFor(model => model.UserName, new { @class = "form-label" })
+                @Html.TextBoxFor(model => model.UserName, new { @class = "form-control", autofocus = "autofocus", placeholder = "Kullanıcı adınız" })
+                @Html.ValidationMessageFor(model => model.UserName, "", new { @class = "text-danger" })
+            </div>
+
+            <div class="mb-3">
+                @Html.LabelFor(model => model.Password, new { @class = "form-label" })
+                @Html.PasswordFor(model => model.Password, new { @class = "form-control", placeholder = "Şifreniz" })
+                @Html.ValidationMessageFor(model => model.Password, "", new { @class = "text-danger" })
+            </div>
+
+            <div class="mb-4">
+                @Html.LabelFor(model => model.ConfirmPassword, new { @class = "form-label" })
+                @Html.PasswordFor(model => model.ConfirmPassword, new { @class = "form-control", placeholder = "Şifrenizi tekrar girin" })
+                @Html.ValidationMessageFor(model => model.ConfirmPassword, "", new { @class = "text-danger" })
+            </div>
+
+            <button type="submit" class="btn app-btn app-btn-primary w-100">Kayıt Ol</button>
+        }
+
+        <p class="auth-switch">
+            Zaten hesabınız var mı?
+            @Html.ActionLink("Giriş yapın", "Login", "Account")
+        </p>
+    </section>
+</div>

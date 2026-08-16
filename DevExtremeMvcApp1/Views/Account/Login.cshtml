@@ -1,0 +1,76 @@
+﻿@model DevExtremeMvcApp1.Models.LoginViewModel
+
+@{
+    ViewBag.Title = "Giriş";
+    ViewBag.HideNavbar = true;
+}
+
+<div class="auth-frame">
+    <section class="auth-info">
+        <div class="auth-brand">
+            <span class="brand-mark">SP</span>
+            <span>Staj Projesi</span>
+        </div>
+
+        <div class="auth-copy">
+            <span class="eyebrow">İşlem Hesabı</span>
+            <h1>Şekil kayıtları tek ekranda.</h1>
+            <p>Ölçüler kaydedilir, hesaplama işlemleri API akışı ile güncellenir ve SQL tabanında saklanır.</p>
+        </div>
+
+        <div class="auth-metrics">
+            <div class="auth-metric">
+                <strong>CRUD</strong>
+                <span>Kayıtlar</span>
+            </div>
+            <div class="auth-metric">
+                <strong>API</strong>
+                <span>Hesaplama</span>
+            </div>
+            <div class="auth-metric">
+                <strong>SQL</strong>
+                <span>Kayıt</span>
+            </div>
+        </div>
+    </section>
+
+    <section class="auth-card">
+        <h2>Giriş yap</h2>
+        <p class="auth-subtitle">Kullanıcı hesabınızla panele devam edin.</p>
+
+        @if (TempData["SuccessMessage"] != null)
+        {
+            <div class="alert alert-success">@TempData["SuccessMessage"]</div>
+        }
+
+        @using (Html.BeginForm("Login", "Account", new { ReturnUrl = ViewBag.ReturnUrl }, FormMethod.Post))
+        {
+            @Html.AntiForgeryToken()
+            @Html.ValidationSummary(true, "", new { @class = "alert alert-danger" })
+
+            <div class="mb-3">
+                @Html.LabelFor(model => model.UserName, new { @class = "form-label" })
+                @Html.TextBoxFor(model => model.UserName, new { @class = "form-control", autofocus = "autofocus", placeholder = "Kullanıcı adınız" })
+                @Html.ValidationMessageFor(model => model.UserName, "", new { @class = "text-danger" })
+            </div>
+
+            <div class="mb-3">
+                @Html.LabelFor(model => model.Password, new { @class = "form-label" })
+                @Html.PasswordFor(model => model.Password, new { @class = "form-control", placeholder = "Şifreniz" })
+                @Html.ValidationMessageFor(model => model.Password, "", new { @class = "text-danger" })
+            </div>
+
+            <div class="form-check mb-4">
+                @Html.CheckBoxFor(model => model.RememberMe, new { @class = "form-check-input" })
+                @Html.LabelFor(model => model.RememberMe, new { @class = "form-check-label" })
+            </div>
+
+            <button type="submit" class="btn app-btn app-btn-primary w-100">Giriş Yap</button>
+        }
+
+        <p class="auth-switch">
+            Hesabınız yok mu?
+            @Html.ActionLink("Kayıt olun", "Register", "Account")
+        </p>
+    </section>
+</div>

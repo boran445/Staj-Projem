@@ -1,0 +1,191 @@
+﻿@model DevExtremeMvcApp1.Models.CalculationResult
+
+@{
+    ViewBag.Title = "Yeni Kayıt";
+    var shapeOptions = new System.Collections.Generic.List<SelectListItem>
+    {
+        new SelectListItem { Text = "Kare", Value = "Kare" },
+        new SelectListItem { Text = "Küp", Value = "Kup" },
+        new SelectListItem { Text = "Daire", Value = "Daire" },
+        new SelectListItem { Text = "Dikdörtgen", Value = "Dikdortgen" },
+        new SelectListItem { Text = "Üçgen", Value = "Ucgen" },
+        new SelectListItem { Text = "Silindir", Value = "Silindir" },
+        new SelectListItem { Text = "Küre", Value = "Kure" },
+        new SelectListItem { Text = "Koni", Value = "Koni" }
+    };
+}
+
+<div class="page-head">
+    <div>
+        <span class="eyebrow">Ölçü Girişi</span>
+        <h1 class="page-title">Yeni Kayıt</h1>
+        <p class="page-subtitle">Şekli seçin ve kayıt için gerekli ölçüleri girin.</p>
+    </div>
+    <div class="page-actions">
+        @Html.ActionLink("Listeye Dön", "Index", null, new { @class = "btn app-btn app-btn-light" })
+    </div>
+</div>
+
+@using (Html.BeginForm())
+{
+    @Html.AntiForgeryToken()
+
+    <div class="form-workspace">
+        <aside class="form-sidebar">
+            <h3>Şekil Seçimi</h3>
+            <p>Kayıt türü</p>
+
+            @Html.DropDownListFor(model => model.ShapeType, shapeOptions, "Şekil seçiniz", new { @class = "form-select shape-hidden-select", required = "required" })
+
+            <div class="shape-list" id="shapeList">
+                <button type="button" class="shape-option" data-shape-option="Kare">
+                    <span><strong>Kare</strong><span>Kenar</span></span>
+                    <span class="shape-visual shape-square" aria-hidden="true"></span>
+                </button>
+                <button type="button" class="shape-option" data-shape-option="Kup">
+                    <span><strong>Küp</strong><span>Kenar</span></span>
+                    <span class="shape-visual shape-cube" aria-hidden="true"></span>
+                </button>
+                <button type="button" class="shape-option" data-shape-option="Daire">
+                    <span><strong>Daire</strong><span>Yarıçap</span></span>
+                    <span class="shape-visual shape-circle" aria-hidden="true"></span>
+                </button>
+                <button type="button" class="shape-option" data-shape-option="Dikdortgen">
+                    <span><strong>Dikdörtgen</strong><span>Kısa / Uzun</span></span>
+                    <span class="shape-visual shape-rectangle" aria-hidden="true"></span>
+                </button>
+                <button type="button" class="shape-option" data-shape-option="Ucgen">
+                    <span><strong>Üçgen</strong><span>Taban / Yükseklik</span></span>
+                    <span class="shape-visual shape-triangle" aria-hidden="true"></span>
+                </button>
+                <button type="button" class="shape-option" data-shape-option="Silindir">
+                    <span><strong>Silindir</strong><span>Yarıçap / Yükseklik</span></span>
+                    <span class="shape-visual shape-cylinder" aria-hidden="true"></span>
+                </button>
+                <button type="button" class="shape-option" data-shape-option="Kure">
+                    <span><strong>Küre</strong><span>Yarıçap</span></span>
+                    <span class="shape-visual shape-sphere" aria-hidden="true"></span>
+                </button>
+                <button type="button" class="shape-option" data-shape-option="Koni">
+                    <span><strong>Koni</strong><span>Yarıçap / Yükseklik</span></span>
+                    <span class="shape-visual shape-cone" aria-hidden="true"></span>
+                </button>
+            </div>
+
+            @Html.ValidationMessageFor(model => model.ShapeType, "", new { @class = "text-danger d-block mt-3" })
+        </aside>
+
+        <section class="form-main">
+            <div class="form-main-head">
+                <div>
+                    <h3>Kayıt Bilgileri</h3>
+                    <p class="page-subtitle mb-0">Durum: bekleyen kayıt</p>
+                </div>
+                <span class="muted-badge"><span class="status-dot"></span><span>Beklemede</span></span>
+            </div>
+
+            <div class="form-grid">
+                <div class="mb-1">
+                    @Html.LabelFor(model => model.Param1, "Ölçü 1", new { @class = "form-label", id = "param1Label" })
+                    @Html.TextBoxFor(model => model.Param1, new { @class = "form-control", type = "number", step = "0.01", min = "0.01", placeholder = "0.00", required = "required" })
+                    @Html.ValidationMessageFor(model => model.Param1, "", new { @class = "text-danger" })
+                </div>
+
+                <div class="mb-1" id="param2Group">
+                    @Html.LabelFor(model => model.Param2, "Ölçü 2", new { @class = "form-label", id = "param2Label" })
+                    @Html.TextBoxFor(model => model.Param2, new { @class = "form-control", type = "number", step = "0.01", min = "0.01", placeholder = "0.00" })
+                    @Html.ValidationMessageFor(model => model.Param2, "", new { @class = "text-danger" })
+                </div>
+            </div>
+
+            <div class="shape-preview">
+                <span>Seçili şekil</span>
+                <strong id="selectedShapeName">Şekil seçiniz</strong>
+                <p id="shapeFormula">Ölçüler girildiğinde bu kayıt hesaplama adımını bekler.</p>
+                <small id="measurePreview">Önce soldan bir şekil seçin.</small>
+            </div>
+
+            <div class="pending-strip">
+                <div class="pending-item">
+                    <span>Alan</span>
+                    <strong>Bekliyor</strong>
+                </div>
+                <div class="pending-item">
+                    <span>Hacim</span>
+                    <strong>Bekliyor</strong>
+                </div>
+            </div>
+
+            @Html.ValidationSummary(true, "", new { @class = "alert alert-danger" })
+
+            <div class="form-actions">
+                <button type="submit" class="btn app-btn app-btn-primary">Kaydet</button>
+                @Html.ActionLink("Vazgeç", "Index", null, new { @class = "btn app-btn app-btn-light" })
+            </div>
+        </section>
+    </div>
+}
+
+<script>
+    (function () {
+        var shapeSelect = document.getElementById("ShapeType");
+        var param1Label = document.getElementById("param1Label");
+        var param2Label = document.getElementById("param2Label");
+        var param2Group = document.getElementById("param2Group");
+        var param2Input = document.getElementById("Param2");
+        var shapeButtons = document.querySelectorAll("[data-shape-option]");
+        var selectedShapeName = document.getElementById("selectedShapeName");
+        var shapeFormula = document.getElementById("shapeFormula");
+        var measurePreview = document.getElementById("measurePreview");
+
+        var labels = {
+            Kare: { name: "Kare", param1: "Kenar", param2: null, formula: "Alan = kenar x kenar. Hacim 0 olarak tutulur." },
+            Kup: { name: "Küp", param1: "Kenar", param2: null, formula: "Alan = 6 x kenar². Hacim = kenar³." },
+            Daire: { name: "Daire", param1: "Yarıçap", param2: null, formula: "Alan = π x yarıçap². Hacim 0 olarak tutulur." },
+            Dikdortgen: { name: "Dikdörtgen", param1: "Kısa Kenar", param2: "Uzun Kenar", formula: "Alan = kısa kenar x uzun kenar. Hacim 0 olarak tutulur." },
+            Ucgen: { name: "Üçgen", param1: "Taban", param2: "Yükseklik", formula: "Alan = taban x yükseklik / 2. Hacim 0 olarak tutulur." },
+            Silindir: { name: "Silindir", param1: "Yarıçap", param2: "Yükseklik", formula: "Alan = 2πr(r+h). Hacim = πr²h." },
+            Kure: { name: "Küre", param1: "Yarıçap", param2: null, formula: "Alan = 4πr². Hacim = 4/3πr³." },
+            Koni: { name: "Koni", param1: "Yarıçap", param2: "Yükseklik", formula: "Alan = πr(r + yan yüz yüksekliği). Hacim = πr²h / 3." }
+        };
+
+        function syncShapeButtons() {
+            for (var i = 0; i < shapeButtons.length; i++) {
+                var button = shapeButtons[i];
+                button.classList.toggle("is-active", button.getAttribute("data-shape-option") === shapeSelect.value);
+            }
+        }
+
+        function updateFields() {
+            var current = labels[shapeSelect.value] || { name: "Şekil seçiniz", param1: "Ölçü 1", param2: null, formula: "Ölçüler girildiğinde bu kayıt hesaplama adımını bekler." };
+            param1Label.textContent = current.param1;
+            selectedShapeName.textContent = current.name;
+            shapeFormula.textContent = current.formula;
+            measurePreview.textContent = current.param2
+                ? current.param1 + " ve " + current.param2 + " değerleri girilecek."
+                : current.param1 + " değeri girilecek.";
+
+            if (current.param2) {
+                param2Label.textContent = current.param2;
+                param2Group.style.display = "block";
+                param2Input.required = true;
+            } else {
+                param2Input.value = "";
+                param2Input.required = false;
+                param2Group.style.display = "none";
+            }
+
+            syncShapeButtons();
+        }
+
+        for (var i = 0; i < shapeButtons.length; i++) {
+            shapeButtons[i].addEventListener("click", function () {
+                shapeSelect.value = this.getAttribute("data-shape-option");
+                updateFields();
+            });
+        }
+
+        shapeSelect.addEventListener("change", updateFields);
+        updateFields();
+    })();
+</script>

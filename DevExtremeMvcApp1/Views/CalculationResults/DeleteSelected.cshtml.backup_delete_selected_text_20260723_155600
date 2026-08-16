@@ -1,0 +1,93 @@
+﻿@model IEnumerable<DevExtremeMvcApp1.Models.CalculationResult>
+@using System.Linq
+
+@{
+    ViewBag.Title = "SeÃ§ilen KayÄ±tlarÄ± Sil";
+    var records = Model == null ? new System.Collections.Generic.List<DevExtremeMvcApp1.Models.CalculationResult>() : Model.ToList();
+    var shapeNames = new System.Collections.Generic.Dictionary<string, string>
+    {
+        { "Kare", "Kare" },
+        { "Kup", "KÃ¼p" },
+        { "Daire", "Daire" },
+        { "Dikdortgen", "DikdÃ¶rtgen" },
+        { "Ucgen", "ÃœÃ§gen" },
+        { "Silindir", "Silindir" },
+        { "Kure", "KÃ¼re" },
+        { "Koni", "Koni" }
+    };
+}
+
+<div class="page-head">
+    <div>
+        <span class="eyebrow danger-eyebrow">Toplu Silme</span>
+        <h1 class="page-title">SeÃ§ilen KayÄ±tlarÄ± Sil</h1>
+        <p class="page-subtitle">SeÃ§tiÄŸiniz kayÄ±tlar aÅŸaÄŸÄ±da listelenir. Onay verdikten sonra bu kayÄ±tlar SQL tablosundan silinir.</p>
+    </div>
+    <div class="page-actions">
+        @Html.ActionLink("Listeye DÃ¶n", "Index", null, new { @class = "btn app-btn app-btn-light" })
+    </div>
+</div>
+
+<section class="portal-panel delete-panel selected-delete-panel">
+    <div class="delete-head">
+        <strong>@records.Count kayÄ±t silinecek</strong>
+        <span>Onay gerekli</span>
+    </div>
+
+    <div class="table-responsive selected-delete-table-wrap">
+        <table class="table app-table selected-delete-table">
+            <thead>
+                <tr>
+                    <th>Åekil</th>
+                    <th>Id</th>
+                    <th>KullanÄ±cÄ±</th>
+                    <th>Ã–lÃ§Ã¼ 1</th>
+                    <th>Ã–lÃ§Ã¼ 2</th>
+                    <th>Alan</th>
+                    <th>Hacim</th>
+                    <th>Durum</th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var item in records)
+            {
+                var displayShape = shapeNames.ContainsKey(item.ShapeType) ? shapeNames[item.ShapeType] : item.ShapeType;
+                var isCalculated = item.Area.HasValue || item.Volume.HasValue;
+                <tr>
+                    <td><span class="table-shape">@displayShape</span></td>
+                    <td>@item.Id</td>
+                    <td>@(string.IsNullOrWhiteSpace(item.CreatedByUserName) ? "-" : item.CreatedByUserName)</td>
+                    <td>@item.Param1.ToString("N2")</td>
+                    <td>@(item.Param2.HasValue ? item.Param2.Value.ToString("N2") : "-")</td>
+                    <td>@(item.Area.HasValue ? item.Area.Value.ToString("N2") : "-")</td>
+                    <td>@(item.Volume.HasValue ? item.Volume.Value.ToString("N2") : "-")</td>
+                    <td>
+                        @if (isCalculated)
+                        {
+                            <span class="status-badge status-badge-done">HesaplandÄ±</span>
+                        }
+                        else
+                        {
+                            <span class="status-badge status-badge-wait">Bekliyor</span>
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+
+    @using (Html.BeginForm("DeleteSelected", "CalculationResults", FormMethod.Post))
+    {
+        @Html.AntiForgeryToken()
+        foreach (var item in records)
+        {
+            <input type="hidden" name="ids" value="@item.Id" />
+        }
+
+        <div class="form-actions">
+            <button type="submit" class="btn app-btn app-btn-danger">SeÃ§ilenleri Sil</button>
+            @Html.ActionLink("VazgeÃ§", "Index", null, new { @class = "btn app-btn app-btn-light" })
+        </div>
+    }
+</section>

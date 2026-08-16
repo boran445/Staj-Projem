@@ -1,0 +1,750 @@
+﻿using DevExtremeMvcApp1.Data;
+using DevExtremeMvcApp1.Models;
+using DevExtremeMvcApp1.Services;
+using System;
+using System.Collections.Generic;
+using System.Data.Entity;
+using System.Linq;
+using System.Net.Http;
+using System.Net;
+using System.Threading.Tasks;
+using System.Web.Mvc;
+
+namespace DevExtremeMvcApp1.Controllers
+{
+    [Authorize]
+    public class CalculationResultsController : Controller
+    {
+        private readonly ApplicationDbContext db = new ApplicationDbContext();
+        private readonly CalculationService calculationService = new CalculationService();
+
+        public ActionResult Index()
+        {
+            var results = GetGridRows();
+
+            return View(results);
+        }
+
+        [HttpGet]
+        public JsonResult GridRowsJson()
+        {
+            return new JsonResult
+            {
+                Data = GetGridRows(),
+                JsonRequestBehavior = JsonRequestBehavior.AllowGet,
+                MaxJsonLength = int.MaxValue
+            };
+        }
+
+        public ActionResult Details(int? id)
+        {
+            if (id == null)
+            {
+                return new HttpStatusCodeResult(HttpStatusCode.BadRequest);
+            }
+
+            CalculationResult calculationResult = db.CalculationResults.Find(id);
+            if (!CanAccess(calculationResult))
+            {
+                return HttpNotFound();
+            }
+
+            return View(calculationResult);
+        }
+
+        public ActionResult Create()
+        {
+            return View();
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<ActionResult> Create([Bind(Include = "ShapeType,Param1,Param2")] CalculationRequest request)
+        {
+            request = request ?? new CalculationRequest();
+            ValidateMeasurementInput(request.ShapeType, request.Param1, request.Param2);
+            if (!ModelState.IsValid)
+            {
+                return View(ToFormModel(request));
+            }
+
+            request.AppUserId = GetCurrentUserId();
+            request.CreatedByUserName = User.Identity.Name;
+            if (!RequiresSecondMeasure(request.ShapeType))
+            {
+                request.Param2 = null;
+            }
+
+            Uri inputApiUri = new Uri(Request.Url, Url.Content("~/api/input/submit"));
+
+            using (var client = new HttpClient())
+            {
+                HttpResponseMessage response = await client.PostAsJsonAsync(inputApiUri, request);
+                if (response.IsSuccessStatusCode)
+                {
+                    TempData["SuccessMessage"] = "Kay\u0131t eklendi. Sonu\u00e7lar\u0131 g\u00fcncellemek i\u00e7in Hesapla butonunu kullanabilirsiniz.";
+                    return RedirectToAction("Index");
+                }
+
+                string errorMessage = await response.Content.ReadAsStringAsync();
+                ModelState.AddModelError("", string.IsNullOrWhiteSpace(errorMessage) ? "Kay\u0131t eklenemedi." : errorMessage);
+            }
+
+            return View(ToFormModel(request));
+        }
+
+        public ActionResult Edit(int? id)
+        {
+            if (id == null)
+            {
+                return new HttpStatusCodeResult(HttpStatusCode.BadRequest);
+            }
+
+            CalculationResult calculationResult = db.CalculationResults.Find(id);
+            if (!CanAccess(calculationResult))
+            {
+                return HttpNotFound();
+            }
+
+            return View(calculationResult);
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public ActionResult Edit([Bind(Include = "Id,ShapeType,Param1,Param2")] CalculationResult formModel)
+        {
+            formModel = formModel ?? new CalculationResult();
+            ValidateMeasurementInput(formModel.ShapeType, formModel.Param1, formModel.Param2);
+            if (!ModelState.IsValid)
+            {
+                return View(formModel);
+            }
+
+            CalculationResult calculationResult = db.CalculationResults.Find(formModel.Id);
+            if (!CanAccess(calculationResult))
+            {
+                return HttpNotFound();
+            }
+
+            var request = new CalculationRequest
+            {
+                AppUserId = GetCurrentUserId(),
+                ShapeType = formModel.ShapeType,
+                CreatedByUserName = User.Identity.Name,
+                Param1 = formModel.Param1,
+                Param2 = formModel.Param2
+            };
+
+            CalculationOutcome outcome = calculationService.UpdatePending(calculationResult, request);
+            if (outcome.Success)
+            {
+                if (string.IsNullOrWhiteSpace(calculationResult.CreatedByUserName))
+                {
+                    calculationResult.CreatedByUserName = User.Identity.Name;
+                }
+
+                db.SaveChanges();
+                TempData["SuccessMessage"] = "Kay\u0131t g\u00fcncellendi. \u00d6l\u00e7\u00fc de\u011fi\u015fti\u011fi i\u00e7in sonu\u00e7lar yeniden hesaplanmay\u0131 bekliyor.";
+                return RedirectToAction("Index");
+            }
+
+            ModelState.AddModelError("", outcome.ErrorMessage);
+
+            return View(formModel);
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public ActionResult CalculateAll()
+        {
+            try
+            {
+                BatchCalculationResponse result = calculationService.CalculateAll(db, User.Identity.Name, GetCurrentUserId());
+                TempData["SuccessMessage"] = result.Message;
+            }
+            catch (Exception ex)
+            {
+                TempData["ErrorMessage"] = ex.GetBaseException().Message;
+            }
+
+            return RedirectToAction("Index");
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public ActionResult CalculateAllJson()
+        {
+            try
+            {
+                BatchCalculationResponse result = calculationService.CalculateAll(db, User.Identity.Name, GetCurrentUserId());
+                return Json(new
+                {
+                    success = true,
+                    message = result.Message,
+                    rows = GetGridRows()
+                });
+            }
+            catch (Exception ex)
+            {
+                return Json(new
+                {
+                    success = false,
+                    message = ex.GetBaseException().Message,
+                    rows = GetGridRows()
+                });
+            }
+        }
+
+        private async Task<OperationResult> CalculateAllInternal()
+        {
+            Uri inputApiUri = new Uri(Request.Url, Url.Content("~/api/input/calculate-all"));
+
+            using (var client = new HttpClient())
+            {
+                HttpResponseMessage response = await client.PostAsJsonAsync(inputApiUri, new BatchCalculationRequest
+                {
+                    AppUserId = null,
+                    UserName = null
+                });
+
+                if (response.IsSuccessStatusCode)
+                {
+                    BatchCalculationResponse result = await response.Content.ReadAsAsync<BatchCalculationResponse>();
+                    return OperationResult.Ok(result.Message);
+                }
+
+                string responseBody = await response.Content.ReadAsStringAsync();
+                return OperationResult.Fail(string.IsNullOrWhiteSpace(responseBody)
+                    ? "Toplu hesaplama yap\u0131lamad\u0131."
+                    : responseBody);
+            }
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public ActionResult CalculateOne(int id)
+        {
+            try
+            {
+                CalculationOutcome result = calculationService.CalculateExisting(db, id, User.Identity.Name, GetCurrentUserId());
+                if (result.Success)
+                {
+                    TempData["SuccessMessage"] = "Id " + id + " kayd\u0131 hesapland\u0131 ve veritaban\u0131 g\u00fcncellendi.";
+                }
+                else
+                {
+                    TempData["ErrorMessage"] = result.ErrorMessage;
+                }
+            }
+            catch (Exception ex)
+            {
+                TempData["ErrorMessage"] = ex.GetBaseException().Message;
+            }
+
+            return RedirectToAction("Index");
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public ActionResult CalculateOneJson(int id)
+        {
+            try
+            {
+                CalculationOutcome result = calculationService.CalculateExisting(db, id, User.Identity.Name, GetCurrentUserId());
+                return Json(new
+                {
+                    success = result.Success,
+                    message = result.Success
+                        ? "Id " + id + " kayd\u0131 hesapland\u0131 ve veritaban\u0131 g\u00fcncellendi."
+                        : result.ErrorMessage,
+                    rows = GetGridRows()
+                });
+            }
+            catch (Exception ex)
+            {
+                return Json(new
+                {
+                    success = false,
+                    message = ex.GetBaseException().Message,
+                    rows = GetGridRows()
+                });
+            }
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public ActionResult CalculateSelectedJson(int[] ids)
+        {
+            if (ids == null || !ids.Any())
+            {
+                return Json(new
+                {
+                    success = false,
+                    message = "\u00d6nce hesaplanacak kay\u0131tlar\u0131 se\u00e7melisiniz.",
+                    rows = GetGridRows()
+                });
+            }
+
+            var selectedIds = ids
+                .Where(x => x > 0)
+                .Distinct()
+                .ToList();
+
+            if (!selectedIds.Any())
+            {
+                return Json(new
+                {
+                    success = false,
+                    message = "Se\u00e7ilen kay\u0131t bilgisi ge\u00e7ersiz.",
+                    rows = GetGridRows()
+                });
+            }
+
+            int calculatedCount = 0;
+            var errorMessages = new List<string>();
+
+            foreach (int selectedId in selectedIds)
+            {
+                CalculationOutcome result = calculationService.CalculateExisting(db, selectedId, User.Identity.Name, GetCurrentUserId());
+                if (result.Success)
+                {
+                    calculatedCount++;
+                }
+                else
+                {
+                    errorMessages.Add("Id " + selectedId + ": " + result.ErrorMessage);
+                }
+            }
+
+            if (errorMessages.Any())
+            {
+                return Json(new
+                {
+                    success = false,
+                    message = calculatedCount + " kay\u0131t hesapland\u0131. Hata: " + string.Join(" | ", errorMessages),
+                    rows = GetGridRows()
+                });
+            }
+
+            return Json(new
+            {
+                success = true,
+                message = calculatedCount + " se\u00e7ili kay\u0131t hesapland\u0131 ve veritaban\u0131 g\u00fcncellendi.",
+                rows = GetGridRows()
+            });
+        }
+
+        private async Task<OperationResult> CalculateOneInternal(int id)
+        {
+            Uri inputApiUri = new Uri(Request.Url, Url.Content("~/api/input/calculate-record/" + id));
+
+            using (var client = new HttpClient())
+            {
+                HttpResponseMessage response = await client.PostAsJsonAsync(inputApiUri, new BatchCalculationRequest
+                {
+                    AppUserId = null,
+                    UserName = null
+                });
+
+                if (response.IsSuccessStatusCode)
+                {
+                    CalculationResponse result = await response.Content.ReadAsAsync<CalculationResponse>();
+                    return OperationResult.Ok("Id " + result.Id + " kayd\u0131 hesapland\u0131 ve veritaban\u0131 g\u00fcncellendi.");
+                }
+
+                string responseBody = await response.Content.ReadAsStringAsync();
+                return OperationResult.Fail(string.IsNullOrWhiteSpace(responseBody)
+                    ? "Kay\u0131t hesaplanamad\u0131."
+                    : responseBody);
+            }
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public ActionResult CreateDemoData()
+        {
+            OperationResult result = CreateDemoDataInternal();
+            if (result.Success)
+            {
+                TempData["SuccessMessage"] = result.Message;
+            }
+            else
+            {
+                TempData["ErrorMessage"] = result.Message;
+            }
+
+            return RedirectToAction("Index");
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public ActionResult CreateDemoDataJson()
+        {
+            OperationResult result = CreateDemoDataInternal();
+            return Json(new
+            {
+                success = result.Success,
+                message = result.Message
+            });
+        }
+
+        private OperationResult CreateDemoDataInternal()
+        {
+            var demoRequests = new List<CalculationRequest>
+            {
+                new CalculationRequest { ShapeType = "Kare", Param1 = 5 },
+                new CalculationRequest { ShapeType = "Kup", Param1 = 3 },
+                new CalculationRequest { ShapeType = "Daire", Param1 = 4 },
+                new CalculationRequest { ShapeType = "Dikdortgen", Param1 = 6, Param2 = 9 },
+                new CalculationRequest { ShapeType = "Ucgen", Param1 = 10, Param2 = 7 },
+                new CalculationRequest { ShapeType = "Silindir", Param1 = 3, Param2 = 8 },
+                new CalculationRequest { ShapeType = "Kure", Param1 = 4 },
+                new CalculationRequest { ShapeType = "Koni", Param1 = 3, Param2 = 9 }
+            };
+
+            int createdCount = 0;
+            foreach (CalculationRequest request in demoRequests)
+            {
+                request.AppUserId = GetCurrentUserId();
+                request.CreatedByUserName = User.Identity.Name;
+                CalculationOutcome outcome = calculationService.CreatePending(db, request);
+                if (!outcome.Success)
+                {
+                    return OperationResult.Fail(outcome.ErrorMessage);
+                }
+
+                createdCount++;
+            }
+
+            return OperationResult.Ok(createdCount + " demo kay\u0131t eklendi. Sonu\u00e7lar\u0131 \u00fcretmek i\u00e7in Hesapla butonunu kullanabilirsiniz.");
+        }
+
+        public ActionResult Delete(int? id)
+        {
+            if (id == null)
+            {
+                return new HttpStatusCodeResult(HttpStatusCode.BadRequest);
+            }
+
+            CalculationResult calculationResult = db.CalculationResults.Find(id);
+            if (!CanAccess(calculationResult))
+            {
+                return HttpNotFound();
+            }
+
+            return View(calculationResult);
+        }
+
+        [HttpPost, ActionName("Delete")]
+        [ValidateAntiForgeryToken]
+        public ActionResult DeleteConfirmed(int id)
+        {
+            CalculationResult calculationResult = db.CalculationResults.Find(id);
+            if (!CanAccess(calculationResult))
+            {
+                return HttpNotFound();
+            }
+
+            db.CalculationResults.Remove(calculationResult);
+            db.SaveChanges();
+            return RedirectToAction("Index");
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public ActionResult DeleteJson(int id)
+        {
+            return Json(new
+            {
+                success = false,
+                message = "Silmek i\u00e7in sat\u0131rdaki Sil ba\u011flant\u0131s\u0131 ile onay ekran\u0131na gidin.",
+                redirectUrl = Url.Action("Delete", "CalculationResults", new { id = id })
+            });
+        }
+        public ActionResult DeleteSelected(int[] ids)
+        {
+            var selectedIds = NormalizeSelectedIds(ids);
+            if (!selectedIds.Any())
+            {
+                TempData["ErrorMessage"] = "\u00d6nce silinecek kay\u0131tlar\u0131 se\u00e7melisiniz.";
+                return RedirectToAction("Index");
+            }
+
+            var records = GetSelectedCalculationResults(selectedIds);
+            if (!records.Any())
+            {
+                TempData["ErrorMessage"] = "Silinecek kay\u0131t bulunamad\u0131.";
+                return RedirectToAction("Index");
+            }
+
+            return View(records);
+        }
+
+        [HttpPost, ActionName("DeleteSelected")]
+        [ValidateAntiForgeryToken]
+        public ActionResult DeleteSelectedConfirmed(int[] ids)
+        {
+            var records = GetSelectedCalculationResults(ids);
+            if (!records.Any())
+            {
+                TempData["ErrorMessage"] = "Silinecek kay\u0131t bulunamad\u0131.";
+                return RedirectToAction("Index");
+            }
+
+            int deletedCount = records.Count;
+            db.CalculationResults.RemoveRange(records);
+            db.SaveChanges();
+
+            TempData["SuccessMessage"] = deletedCount + " se\u00e7ili kay\u0131t silindi.";
+            return RedirectToAction("Index");
+        }
+
+        private List<int> NormalizeSelectedIds(IEnumerable<int> ids)
+        {
+            if (ids == null)
+            {
+                return new List<int>();
+            }
+
+            return ids
+                .Where(x => x > 0)
+                .Distinct()
+                .ToList();
+        }
+
+        private List<CalculationResult> GetSelectedCalculationResults(IEnumerable<int> ids)
+        {
+            var selectedIds = NormalizeSelectedIds(ids);
+            if (!selectedIds.Any())
+            {
+                return new List<CalculationResult>();
+            }
+
+            return db.CalculationResults
+                .Include(x => x.AppUser)
+                .Where(x => selectedIds.Contains(x.Id))
+                .OrderByDescending(x => x.CalculationDate)
+                .ToList()
+                .Where(CanAccess)
+                .ToList();
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                db.Dispose();
+            }
+
+            base.Dispose(disposing);
+        }
+
+        private bool CanAccess(CalculationResult calculationResult)
+        {
+            if (calculationResult == null)
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        private int? GetCurrentUserId()
+        {
+            string userName = User.Identity.Name;
+            if (string.IsNullOrWhiteSpace(userName))
+            {
+                return null;
+            }
+
+            return db.AppUsers
+                .Where(x => x.UserName == userName)
+                .Select(x => (int?)x.Id)
+                .FirstOrDefault();
+        }
+
+        private List<CalculationGridRow> GetGridRows()
+        {
+            return db.CalculationResults
+                .AsNoTracking()
+                .Include(x => x.AppUser)
+                .OrderByDescending(x => x.CalculationDate)
+                .AsEnumerable()
+                .Select(ToGridRow)
+                .ToList();
+        }
+
+        private static CalculationGridRow ToGridRow(CalculationResult calculationResult)
+        {
+            return new CalculationGridRow
+            {
+                Id = calculationResult.Id,
+                AppUserId = calculationResult.AppUserId,
+                ShapeType = calculationResult.ShapeType,
+                Shape = GetDisplayShape(calculationResult.ShapeType),
+                CreatedByUserName = GetDisplayUserName(calculationResult),
+                Param1 = calculationResult.Param1,
+                Param2 = calculationResult.Param2,
+                Area = calculationResult.Area,
+                Volume = calculationResult.Volume,
+                CreatedDate = calculationResult.CreatedDate,
+                CreatedDateText = calculationResult.CreatedDate.ToString("dd.MM.yyyy HH:mm:ss"),
+                CalculationDate = calculationResult.CalculationDate,
+                CalculationDateText = calculationResult.CalculationDate.ToString("dd.MM.yyyy HH:mm:ss"),
+                Status = calculationResult.Area.HasValue || calculationResult.Volume.HasValue ? "Hesapland\u0131" : "Bekliyor",
+                StatusKey = calculationResult.Area.HasValue || calculationResult.Volume.HasValue ? "done" : "pending"
+            };
+        }
+
+        private static string GetDisplayUserName(CalculationResult calculationResult)
+        {
+            if (!string.IsNullOrWhiteSpace(calculationResult.CreatedByUserName))
+            {
+                return calculationResult.CreatedByUserName;
+            }
+
+            if (calculationResult.AppUser != null && !string.IsNullOrWhiteSpace(calculationResult.AppUser.UserName))
+            {
+                return calculationResult.AppUser.UserName;
+            }
+
+            return "-";
+        }
+
+        private static string GetDisplayShape(string shapeType)
+        {
+            switch (shapeType)
+            {
+                case "Kare":
+                    return "Kare";
+
+                case "Kup":
+                    return "K\u00fcp";
+
+                case "Daire":
+                    return "Daire";
+
+                case "Dikdortgen":
+                    return "Dikd\u00f6rtgen";
+
+                case "Ucgen":
+                    return "\u00dc\u00e7gen";
+
+                case "Silindir":
+                    return "Silindir";
+
+                case "Kure":
+                    return "K\u00fcre";
+
+                case "Koni":
+                    return "Koni";
+
+                default:
+                    return string.IsNullOrWhiteSpace(shapeType) ? "-" : shapeType;
+            }
+        }
+
+        private void ValidateMeasurementInput(string shapeType, double param1, double? param2)
+        {
+            if (string.IsNullOrWhiteSpace(shapeType) || !IsSupportedShape(shapeType))
+            {
+                ModelState.AddModelError("ShapeType", "Ge\u00e7erli bir \u015fekil se\u00e7iniz.");
+                return;
+            }
+
+            if (param1 <= 0)
+            {
+                ModelState.AddModelError("Param1", "\u00d6l\u00e7\u00fc 1 de\u011feri 0'dan b\u00fcy\u00fck olmal\u0131d\u0131r.");
+            }
+
+            if (RequiresSecondMeasure(shapeType) && (!param2.HasValue || param2.Value <= 0))
+            {
+                ModelState.AddModelError("Param2", "Bu \u015fekil i\u00e7in \u00d6l\u00e7\u00fc 2 de\u011feri 0'dan b\u00fcy\u00fck olmal\u0131d\u0131r.");
+            }
+        }
+
+        private static CalculationResult ToFormModel(CalculationRequest request)
+        {
+            return new CalculationResult
+            {
+                ShapeType = request.ShapeType,
+                Param1 = request.Param1,
+                Param2 = request.Param2
+            };
+        }
+
+        private static bool RequiresSecondMeasure(string shapeType)
+        {
+            string value = NormalizeShapeKey(shapeType);
+
+            return value == "dikdortgen"
+                || value == "ucgen"
+                || value == "silindir"
+                || value == "koni";
+        }
+
+        private static bool IsSupportedShape(string shapeType)
+        {
+            switch (NormalizeShapeKey(shapeType))
+            {
+                case "kare":
+                case "kup":
+                case "daire":
+                case "dikdortgen":
+                case "ucgen":
+                case "silindir":
+                case "kure":
+                case "koni":
+                    return true;
+
+                default:
+                    return false;
+            }
+        }
+
+        private static string NormalizeShapeKey(string shapeType)
+        {
+            return (shapeType ?? string.Empty)
+                .Trim()
+                .ToLowerInvariant()
+                .Replace("\u00fc", "u")
+                .Replace("\u00f6", "o")
+                .Replace("\u0131", "i")
+                .Replace("\u011f", "g")
+                .Replace("\u015f", "s")
+                .Replace("\u00e7", "c");
+        }
+
+        private class OperationResult
+        {
+            public bool Success { get; set; }
+
+            public string Message { get; set; }
+
+            public static OperationResult Ok(string message)
+            {
+                return new OperationResult
+                {
+                    Success = true,
+                    Message = message
+                };
+            }
+
+            public static OperationResult Fail(string message)
+            {
+                return new OperationResult
+                {
+                    Success = false,
+                    Message = message
+                };
+            }
+        }
+    }
+}
+
+
+
+
+
+
+

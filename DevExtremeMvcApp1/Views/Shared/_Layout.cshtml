@@ -1,0 +1,92 @@
+﻿@{
+    var hideNavbar = ViewBag.HideNavbar == true;
+    var bodyClass = hideNavbar ? "auth-body" : "app-body";
+    var shellClass = hideNavbar ? "auth-shell" : "app-shell";
+    var devExpressLicenseKey = System.Configuration.ConfigurationManager.AppSettings["DevExpressLicenseKey"];
+}
+
+<!DOCTYPE html>
+
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="description" content="">
+    <meta name="author" content="">
+
+    <title>@ViewBag.Title - Staj Projesi</title>
+    <link href="~/favicon.ico" rel="shortcut icon" type="image/x-icon" />
+
+    @* Uncomment to use the HtmlEditor control *@
+    @*<script src="@Url.Content("~/Scripts/dx-quill.min.js")"></script>*@
+
+    @Styles.Render("~/Content/bundle")
+    @Styles.Render("~/Content/DevExtremeBundle")
+    <link href="@Url.Content("~/Content/Site.css")?v=20260720-grid-v4" rel="stylesheet" />
+    @Scripts.Render("~/Scripts/bundle")
+    @Scripts.Render("~/Scripts/DevExtremeBundle")
+    @if (!string.IsNullOrWhiteSpace(devExpressLicenseKey))
+    {
+        <script>
+            DevExpress.config({
+                licenseKey: "@Html.Raw(System.Web.HttpUtility.JavaScriptStringEncode(devExpressLicenseKey))"
+            });
+        </script>
+    }
+</head>
+
+<body class="@bodyClass">
+    @if (!hideNavbar)
+    {
+        <nav class="navbar navbar-dark navbar-expand-md app-navbar fixed-top">
+            <div class="container-fluid app-navbar-inner">
+                <a class="navbar-brand app-brand" href="@Url.Action("Index", "CalculationResults")">
+                    <span class="brand-mark">SP</span>
+                    <span>Staj Projesi</span>
+                </a>
+
+                <button type="button" class="navbar-toggler app-navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navbar" aria-expanded="false" aria-controls="navbar">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <div id="navbar" class="collapse navbar-collapse">
+                    <ul class="navbar-nav app-nav-links me-auto">
+                        <li class="nav-item">@Html.ActionLink("Ana Sayfa", "Index", "CalculationResults", null, new { @class = "nav-link" })</li>
+                        <li class="nav-item">@Html.ActionLink("Hesaplamalar", "Index", "CalculationResults", null, new { @class = "nav-link" })</li>
+                    </ul>
+                    <ul class="navbar-nav app-nav-user ms-auto">
+                        @if (Request.IsAuthenticated)
+                        {
+                            <li class="nav-item">
+                                <span class="navbar-text user-pill">@User.Identity.Name</span>
+                            </li>
+                            <li class="nav-item">
+                                @using (Html.BeginForm("Logout", "Account", FormMethod.Post, new { @class = "d-inline" }))
+                                {
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" class="btn btn-sm app-btn app-btn-ghost">Çıkış</button>
+                                }
+                            </li>
+                        }
+                        else
+                        {
+                            <li class="nav-item">@Html.ActionLink("Giriş", "Login", "Account", null, new { @class = "nav-link" })</li>
+                            <li class="nav-item">@Html.ActionLink("Kayıt Ol", "Register", "Account", null, new { @class = "nav-link" })</li>
+                        }
+                    </ul>
+                </div>
+            </div>
+        </nav>
+    }
+
+    <main class="@shellClass">
+        @RenderBody()
+    </main>
+</body>
+
+</html>
+
+
+
+

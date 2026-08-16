@@ -1,0 +1,96 @@
+﻿@model DevExtremeMvcApp1.Models.CalculationResult
+
+@{
+    ViewBag.Title = "Kayıt Detayı";
+    var shapeNames = new System.Collections.Generic.Dictionary<string, string>
+    {
+        { "Kare", "Kare" },
+        { "Kup", "Küp" },
+        { "Daire", "Daire" },
+        { "Dikdortgen", "Dikdörtgen" },
+        { "Ucgen", "Üçgen" },
+        { "Silindir", "Silindir" },
+        { "Kure", "Küre" },
+        { "Koni", "Koni" }
+    };
+    var visualClasses = new System.Collections.Generic.Dictionary<string, string>
+    {
+        { "Kare", "shape-square" },
+        { "Kup", "shape-cube" },
+        { "Daire", "shape-circle" },
+        { "Dikdortgen", "shape-rectangle" },
+        { "Ucgen", "shape-triangle" },
+        { "Silindir", "shape-cylinder" },
+        { "Kure", "shape-sphere" },
+        { "Koni", "shape-cone" }
+    };
+    var displayShape = shapeNames.ContainsKey(Model.ShapeType) ? shapeNames[Model.ShapeType] : Model.ShapeType;
+    var visualClass = visualClasses.ContainsKey(Model.ShapeType) ? visualClasses[Model.ShapeType] : "shape-square";
+    var isCalculated = Model.Area.HasValue && Model.Volume.HasValue;
+}
+
+<div class="page-head">
+    <div>
+        <span class="eyebrow">Kayıt Detayı</span>
+        <h1 class="page-title">@displayShape</h1>
+        <p class="page-subtitle">Seçili kaydın ölçüleri, hesaplama durumu ve SQL'e yazılan sonucu.</p>
+    </div>
+
+    <div class="page-actions">
+        @using (Html.BeginForm("CalculateOne", "CalculationResults", new { id = Model.Id }, FormMethod.Post, new { @class = "d-inline" }))
+        {
+            @Html.AntiForgeryToken()
+            <button type="submit" class="btn app-btn app-btn-success">Hesapla</button>
+        }
+        @Html.ActionLink("Düzenle", "Edit", new { id = Model.Id }, new { @class = "btn app-btn app-btn-primary" })
+        @Html.ActionLink("Listeye Dön", "Index", null, new { @class = "btn app-btn app-btn-light" })
+    </div>
+</div>
+
+<section class="portal-panel detail-panel">
+    <div class="detail-hero">
+        <span class="shape-visual @visualClass" aria-hidden="true"></span>
+        <div>
+            <span class="detail-id">Id @Model.Id</span>
+            <h2>@displayShape</h2>
+            @if (isCalculated)
+            {
+                <span class="status-badge status-badge-done">Hesaplandı</span>
+            }
+            else
+            {
+                <span class="status-badge status-badge-wait">Bekliyor</span>
+            }
+        </div>
+    </div>
+
+    <dl class="detail-list">
+        <dt>Kullanıcı</dt>
+        <dd>@(string.IsNullOrWhiteSpace(Model.CreatedByUserName) ? "-" : Model.CreatedByUserName)</dd>
+
+        <dt>Kullanıcı Id</dt>
+        <dd>@(Model.AppUserId.HasValue ? Model.AppUserId.Value.ToString() : "-")</dd>
+
+        <dt>Ölçü 1</dt>
+        <dd>@Model.Param1.ToString("N2")</dd>
+
+        <dt>Ölçü 2</dt>
+        <dd>@(Model.Param2.HasValue ? Model.Param2.Value.ToString("N2") : "-")</dd>
+
+        <dt>Alan</dt>
+        <dd>@(Model.Area.HasValue ? Model.Area.Value.ToString("N2") : "Hesaplanmadı")</dd>
+
+        <dt>Hacim</dt>
+        <dd>@(Model.Volume.HasValue ? Model.Volume.Value.ToString("N2") : "Hesaplanmadı")</dd>
+
+        <dt>Kayıt Tarihi</dt>
+        <dd>@Model.CreatedDate.ToString("dd.MM.yyyy HH:mm:ss")</dd>
+
+        <dt>İşlem Tarihi</dt>
+        <dd>@Model.CalculationDate.ToString("dd.MM.yyyy HH:mm:ss")</dd>
+    </dl>
+
+    <div class="form-actions">
+        @Html.ActionLink("Sil", "Delete", new { id = Model.Id }, new { @class = "btn app-btn app-btn-danger" })
+    </div>
+</section>

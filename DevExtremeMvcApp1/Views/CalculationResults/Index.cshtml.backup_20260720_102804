@@ -1,0 +1,401 @@
+﻿@model IEnumerable<DevExtremeMvcApp1.Models.CalculationGridRow>
+@using System.Linq
+@using System.Collections.Generic
+
+@{
+    ViewBag.Title = "Hesaplama Listesi";
+    var records = Model == null ? new List<DevExtremeMvcApp1.Models.CalculationGridRow>() : Model.ToList();
+}
+
+<div class="page-head">
+    <div>
+        <span class="eyebrow">&#350;ekil Hesaplama</span>
+        <h1 class="page-title">Hesaplama Listesi</h1>
+        <p class="page-subtitle">Kay&#305;tlar DevExtreme DataGrid ile listelenir; arama, filtreleme, kolon se&#231;imi, Excel aktar&#305;m&#305; ve sayfalama grid &#252;zerinden yap&#305;l&#305;r.</p>
+    </div>
+
+    <div class="page-actions">
+        <button type="button" class="btn app-btn app-btn-success" id="calculateAllButton">T&#252;m&#252;n&#252; Hesapla</button>
+        <button type="button" class="btn app-btn app-btn-light" id="demoDataButton">Demo Veri</button>
+        <a href="@Url.Action("Create", "CalculationResults")" class="btn app-btn app-btn-primary">Yeni Kay&#305;t</a>
+    </div>
+</div>
+
+<div class="grid-action-token">
+    @Html.AntiForgeryToken()
+</div>
+
+<div id="gridAlertHost">
+    @if (TempData["SuccessMessage"] != null)
+    {
+        <div class="alert alert-success">@TempData["SuccessMessage"]</div>
+    }
+
+    @if (TempData["ErrorMessage"] != null)
+    {
+        <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
+    }
+</div>
+
+<section class="portal-panel grid-panel">
+    <div class="table-toolbar">
+        <div>
+            <strong>DevExtreme DataGrid</strong>
+            <span><span id="recordCountText">@records.Count</span> kay&#305;t listeleniyor</span>
+        </div>
+    </div>
+
+    <div class="dx-grid-host">
+        <div id="calculationGrid"></div>
+    </div>
+</section>
+
+<script>
+    var gridRowsUrl = '@Url.Action("GridRowsJson", "CalculationResults")';
+    var detailUrlTemplate = '@Url.Action("Details", "CalculationResults", new { id = "__id__" })';
+    var editUrlTemplate = '@Url.Action("Edit", "CalculationResults", new { id = "__id__" })';
+    var calculateAllUrl = '@Url.Action("CalculateAllJson", "CalculationResults")';
+    var calculateOneUrlTemplate = '@Url.Action("CalculateOneJson", "CalculationResults", new { id = "__id__" })';
+    var createDemoDataUrl = '@Url.Action("CreateDemoDataJson", "CalculationResults")';
+    var deleteJsonUrlTemplate = '@Url.Action("DeleteJson", "CalculationResults", new { id = "__id__" })';
+    var loadedGridRows = [];
+
+    function sanitizeRows(rows) {
+        return Array.isArray(rows) ? rows : [];
+    }
+
+    function gridUrl(template, id) {
+        return template.replace("__id__", encodeURIComponent(id));
+    }
+
+    function getAntiForgeryToken() {
+        return $('input[name="__RequestVerificationToken"]').first().val();
+    }
+
+    function getGrid() {
+        try {
+            return $("#calculationGrid").dxDataGrid("instance");
+        } catch (error) {
+            return null;
+        }
+    }
+
+    function updateRecordCount(rows) {
+        loadedGridRows = sanitizeRows(rows);
+        $("#recordCountText").text(loadedGridRows.length);
+    }
+
+    function formatNumber(value) {
+        if (value === null || value === undefined || value === "") {
+            return "-";
+        }
+
+        var numberValue = Number(value);
+        if (Number.isNaN(numberValue)) {
+            return value;
+        }
+
+        return numberValue.toLocaleString("tr-TR", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        });
+    }
+
+    function nullableText(cellInfo) {
+        return cellInfo.value === null || cellInfo.value === undefined ? "-" : cellInfo.value;
+    }
+
+    function numberText(cellInfo) {
+        return formatNumber(cellInfo.value);
+    }
+
+    function nullableNumberText(cellInfo) {
+        return cellInfo.value === null || cellInfo.value === undefined ? "-" : formatNumber(cellInfo.value);
+    }
+
+    function normalizeError(xhr, fallbackMessage) {
+        if (xhr && xhr.responseJSON && xhr.responseJSON.message) {
+            return xhr.responseJSON.message;
+        }
+
+        if (xhr && xhr.responseJSON && xhr.responseJSON.Message) {
+            return xhr.responseJSON.Message;
+        }
+
+        if (xhr && xhr.responseText) {
+            return xhr.responseText;
+        }
+
+        return fallbackMessage;
+    }
+
+    function showGridMessage(message, isSuccess) {
+        var alertClass = isSuccess ? "alert-success" : "alert-danger";
+
+        $("#gridAlertHost")
+            .empty()
+            .append($("<div/>").addClass("alert " + alertClass).text(message));
+    }
+
+    function createGridStore() {
+        return new DevExpress.data.CustomStore({
+            key: "Id",
+            loadMode: "raw",
+            load: function () {
+                return $.ajax({
+                    url: gridRowsUrl,
+                    type: "GET",
+                    dataType: "json",
+                    cache: false,
+                    data: {
+                        _: new Date().getTime()
+                    }
+                }).then(function (rows) {
+                    rows = sanitizeRows(rows);
+                    updateRecordCount(rows);
+                    return rows;
+                });
+            }
+        });
+    }
+
+    function reloadGrid() {
+        var grid = getGrid();
+
+        if (!grid) {
+            return;
+        }
+
+        grid.clearFilter();
+        grid.clearSelection();
+        grid.pageIndex(0);
+
+        var dataSource = grid.getDataSource();
+        if (dataSource) {
+            dataSource.reload().done(function () {
+                grid.refresh();
+                grid.repaint();
+            });
+        } else {
+            grid.refresh();
+        }
+    }
+
+    function postGridAction(url, fallbackMessage) {
+        return $.ajax({
+            url: url,
+            type: "POST",
+            data: {
+                __RequestVerificationToken: getAntiForgeryToken()
+            }
+        }).done(function (response) {
+            var success = !response || response.success !== false;
+            showGridMessage(response && response.message ? response.message : fallbackMessage, success);
+
+            if (success) {
+                reloadGrid();
+            }
+        }).fail(function (xhr) {
+            showGridMessage(normalizeError(xhr, fallbackMessage), false);
+        });
+    }
+
+    function appendActionLink(container, text, url, cssClass) {
+        $("<a/>")
+            .addClass("action-link " + (cssClass || ""))
+            .attr("href", url)
+            .text(text)
+            .appendTo(container);
+    }
+
+    function appendGridActionButton(container, text, cssClass, clickHandler) {
+        $("<button/>")
+            .attr("type", "button")
+            .addClass("action-link " + (cssClass || ""))
+            .text(text)
+            .on("click", clickHandler)
+            .appendTo(container);
+    }
+
+    function actionsCellTemplate(container, options) {
+        var row = options.data || {};
+        var id = row.Id;
+
+        if (!id) {
+            return;
+        }
+
+        var actionWrap = $("<div/>").addClass("dx-grid-actions");
+
+        appendActionLink(actionWrap, "Detay", gridUrl(detailUrlTemplate, id));
+        appendActionLink(actionWrap, "D\u00fczenle", gridUrl(editUrlTemplate, id));
+        appendGridActionButton(actionWrap, "Hesapla", "action-link-success", function () {
+            postGridAction(gridUrl(calculateOneUrlTemplate, id), "Kay\u0131t hesapland\u0131.");
+        });
+        appendGridActionButton(actionWrap, "Sil", "action-link-danger", function () {
+            if (confirm("Bu kayd\u0131 silmek istedi\u011finize emin misiniz?")) {
+                postGridAction(gridUrl(deleteJsonUrlTemplate, id), "Kay\u0131t silindi.");
+            }
+        });
+
+        actionWrap.appendTo(container);
+    }
+
+    function onGridToolbarPreparing(e) {
+        e.toolbarOptions.items.unshift(
+            {
+                location: "after",
+                widget: "dxButton",
+                options: {
+                    text: "Kolonlar",
+                    icon: "columnchooser",
+                    onClick: function () {
+                        e.component.showColumnChooser();
+                    }
+                }
+            },
+            {
+                location: "after",
+                widget: "dxButton",
+                options: {
+                    text: "Yenile",
+                    icon: "refresh",
+                    onClick: reloadGrid
+                }
+            }
+        );
+    }
+
+    function onGridExporting(e) {
+        if (!window.ExcelJS || !DevExpress.excelExporter || !window.saveAs) {
+            showGridMessage("Excel aktar\u0131m\u0131 i\u00e7in gerekli DevExtreme dosyalar\u0131 y\u00fcklenemedi.", false);
+            e.cancel = true;
+            return;
+        }
+
+        var workbook = new ExcelJS.Workbook();
+        var worksheet = workbook.addWorksheet("Hesaplama Listesi");
+
+        DevExpress.excelExporter.exportDataGrid({
+            component: e.component,
+            worksheet: worksheet,
+            autoFilterEnabled: true
+        }).then(function () {
+            workbook.xlsx.writeBuffer().then(function (buffer) {
+                saveAs(new Blob([buffer], { type: "application/octet-stream" }), "Hesaplama_Listesi.xlsx");
+            });
+        });
+
+        e.cancel = true;
+    }
+
+    function createCalculationGrid() {
+        if (!window.DevExpress || !$.fn.dxDataGrid) {
+            showGridMessage("DevExtreme DataGrid y\u00fcklenemedi. Script dosyalar\u0131n\u0131 kontrol edin.", false);
+            return;
+        }
+
+        DevExpress.localization.locale("tr");
+
+        $("#calculationGrid").dxDataGrid({
+            dataSource: createGridStore(),
+            keyExpr: "Id",
+            paging: {
+                pageSize: 10
+            },
+            pager: {
+                visible: true,
+                showPageSizeSelector: true,
+                allowedPageSizes: [10, 25, 50, 100],
+                showInfo: true
+            },
+            searchPanel: {
+                visible: true,
+                highlightCaseSensitive: true,
+                placeholder: "Grid i\u00e7inde ara"
+            },
+            groupPanel: {
+                visible: false
+            },
+            grouping: {
+                autoExpandAll: false
+            },
+            allowColumnReordering: true,
+            allowColumnResizing: true,
+            rowAlternationEnabled: true,
+            showBorders: true,
+            width: "100%",
+            columnAutoWidth: true,
+            remoteOperations: false,
+            noDataText: "Hen\u00fcz kay\u0131t bulunmuyor.",
+            loadPanel: {
+                enabled: true,
+                text: "Y\u00fckleniyor..."
+            },
+            filterRow: {
+                visible: false
+            },
+            headerFilter: {
+                visible: true
+            },
+            columnChooser: {
+                enabled: true,
+                mode: "select",
+                title: "Kolon Se\u00e7ici",
+                emptyPanelText: "G\u00f6stermek istedi\u011finiz kolonlar\u0131 se\u00e7in"
+            },
+            stateStoring: {
+                enabled: false
+            },
+            export: {
+                enabled: true,
+                allowExportSelectedData: true
+            },
+            sorting: {
+                mode: "multiple"
+            },
+            columns: [
+                { dataField: "Shape", caption: "\u015eekil", minWidth: 120 },
+                { dataField: "Id", caption: "Id", dataType: "number", width: 80, alignment: "center" },
+                { dataField: "AppUserId", caption: "Kullan\u0131c\u0131 Id", dataType: "number", width: 120, alignment: "center", customizeText: nullableText },
+                { dataField: "CreatedByUserName", caption: "Kullan\u0131c\u0131", minWidth: 130 },
+                { dataField: "Param1", caption: "\u00d6l\u00e7\u00fc 1", dataType: "number", alignment: "right", customizeText: numberText },
+                { dataField: "Param2", caption: "\u00d6l\u00e7\u00fc 2", dataType: "number", alignment: "right", customizeText: nullableNumberText },
+                { dataField: "Area", caption: "Alan", dataType: "number", alignment: "right", allowGrouping: false, customizeText: nullableNumberText },
+                { dataField: "Volume", caption: "Hacim", dataType: "number", alignment: "right", allowGrouping: false, customizeText: nullableNumberText },
+                { dataField: "CreatedDateText", caption: "Kay\u0131t Tarihi", dataType: "string", minWidth: 150 },
+                { dataField: "CalculationDateText", caption: "\u0130\u015flem Tarihi", dataType: "string", sortOrder: "desc", minWidth: 150 },
+                { dataField: "Status", caption: "Durum", minWidth: 110 },
+                {
+                    caption: "\u0130\u015flemler",
+                    width: 330,
+                    alignment: "right",
+                    allowFiltering: false,
+                    allowSorting: false,
+                    allowGrouping: false,
+                    cellTemplate: actionsCellTemplate
+                }
+            ],
+            onToolbarPreparing: onGridToolbarPreparing,
+            onExporting: onGridExporting,
+            onDataErrorOccurred: function (e) {
+                showGridMessage(e && e.error && e.error.message ? e.error.message : "KayÄ±tlar listelenemedi.", false);
+            },
+            onContentReady: function (e) {
+                updateRecordCount(loadedGridRows);
+            }
+        });
+    }
+
+    $(function () {
+        createCalculationGrid();
+
+        $("#calculateAllButton").on("click", function () {
+            postGridAction(calculateAllUrl, "Kay\u0131tlar hesapland\u0131.");
+        });
+
+        $("#demoDataButton").on("click", function () {
+            postGridAction(createDemoDataUrl, "Demo kay\u0131tlar eklendi.");
+        });
+    });
+</script>

@@ -1,0 +1,70 @@
+﻿@model DevExtremeMvcApp1.Models.CalculationResult
+
+@{
+    ViewBag.Title = "Kayıt Sil";
+    var shapeNames = new System.Collections.Generic.Dictionary<string, string>
+    {
+        { "Kare", "Kare" },
+        { "Kup", "Küp" },
+        { "Daire", "Daire" },
+        { "Dikdortgen", "Dikdörtgen" },
+        { "Ucgen", "Üçgen" },
+        { "Silindir", "Silindir" },
+        { "Kure", "Küre" },
+        { "Koni", "Koni" }
+    };
+    var displayShape = shapeNames.ContainsKey(Model.ShapeType) ? shapeNames[Model.ShapeType] : Model.ShapeType;
+}
+
+<div class="page-head">
+    <div>
+        <span class="eyebrow danger-eyebrow">Kayıt Silme</span>
+        <h1 class="page-title">Kayıt Sil</h1>
+        <p class="page-subtitle">Seçili kayıt silindikten sonra listeden kaldırılır.</p>
+    </div>
+    <div class="page-actions">
+        @Html.ActionLink("Listeye Dön", "Index", null, new { @class = "btn app-btn app-btn-light" })
+    </div>
+</div>
+
+<section class="portal-panel delete-panel">
+    <div class="delete-head">
+        <strong>Bu kaydı silmek istediğinize emin misiniz?</strong>
+        <span>@displayShape</span>
+    </div>
+
+    <dl class="detail-list">
+        <dt>Şekil</dt>
+        <dd>@displayShape</dd>
+
+        <dt>Kullanıcı Id</dt>
+        <dd>@(Model.AppUserId.HasValue ? Model.AppUserId.Value.ToString() : "-")</dd>
+
+        <dt>Ölçü 1</dt>
+        <dd>@Model.Param1.ToString("N2")</dd>
+
+        <dt>Ölçü 2</dt>
+        <dd>@(Model.Param2.HasValue ? Model.Param2.Value.ToString("N2") : "-")</dd>
+
+        <dt>Alan</dt>
+        <dd>@(Model.Area.HasValue ? Model.Area.Value.ToString("N2") : "Hesaplanmadı")</dd>
+
+        <dt>Hacim</dt>
+        <dd>@(Model.Volume.HasValue ? Model.Volume.Value.ToString("N2") : "Hesaplanmadı")</dd>
+
+        <dt>Kayıt Tarihi</dt>
+        <dd>@Model.CreatedDate.ToString("dd.MM.yyyy HH:mm:ss")</dd>
+
+        <dt>İşlem Tarihi</dt>
+        <dd>@Model.CalculationDate.ToString("dd.MM.yyyy HH:mm:ss")</dd>
+    </dl>
+
+@using (Html.BeginForm())
+{
+    @Html.AntiForgeryToken()
+    <div class="form-actions">
+        <button type="submit" class="btn app-btn app-btn-danger">Sil</button>
+        @Html.ActionLink("Vazgeç", "Index", null, new { @class = "btn app-btn app-btn-light" })
+    </div>
+}
+</section>
